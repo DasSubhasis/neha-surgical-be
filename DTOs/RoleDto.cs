@@ -154,3 +154,35 @@ public class MenuWithPermissionsDto
     public string CanDelete { get; set; } = "N";
     public List<MenuWithPermissionsDto>? SubMenus { get; set; }
 }
+
+// User-specific menu permission DTOs
+public class UserMenuPermissionDto
+{
+    [Required(ErrorMessage = "Menu ID is required")]
+    public int MenuId { get; set; }
+
+    [RegularExpression("^[YN]$", ErrorMessage = "CanView must be 'Y' or 'N'")]
+    public string CanView { get; set; } = "Y";
+
+    [RegularExpression("^[YN]$", ErrorMessage = "CanCreate must be 'Y' or 'N'")]
+    public string CanCreate { get; set; } = "N";
+
+    [RegularExpression("^[YN]$", ErrorMessage = "CanEdit must be 'Y' or 'N'")]
+    public string CanEdit { get; set; } = "N";
+
+    [RegularExpression("^[YN]$", ErrorMessage = "CanDelete must be 'Y' or 'N'")]
+    public string CanDelete { get; set; } = "N";
+}
+
+public class UserMenuPermissionResponseDto
+{
+    public int UserPermissionId { get; set; }
+    public int UserId { get; set; }
+    public int MenuId { get; set; }
+    public string MenuName { get; set; } = string.Empty;
+    public string MenuPath { get; set; } = string.Empty;
+    public string CanView { get; set; } = "Y";
+    public string CanCreate { get; set; } = "N";
+    public string CanEdit { get; set; } = "N";
+    public string CanDelete { get; set; } = "N";
+}

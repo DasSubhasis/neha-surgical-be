@@ -60,7 +60,7 @@ public class MenusController : ControllerBase
         }
     }
 
-    // GET: api/Menus/user-menus (Get menus for logged-in user based on role)
+    // GET: api/Menus/user-menus (Get menus for logged-in user based on user-specific or role permissions)
     [HttpGet("user-menus")]
     [Authorize]
     public async Task<IActionResult> GetUserMenus()
@@ -69,38 +69,51 @@ public class MenusController : ControllerBase
         {
             var userId = int.Parse(User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? "0");
 
+            if (userId == 0)
+            {
+                return Unauthorized(new { message = "Invalid user token" });
+            }
+
             // Get user's role
-            var userSql = "SELECT role_id FROM SystemUsers WHERE system_user_id = @UserId";
+            var userSql = "SELECT role_id FROM SystemUsers WHERE system_user_id = @UserId AND is_active = 'Y'";
             var roleId = await _connection.QueryFirstOrDefaultAsync<int?>(userSql, new { UserId = userId });
 
             if (roleId == null)
             {
-                return NotFound(new { message = "User role not found" });
+                return NotFound(new { message = "User not found or inactive" });
             }
 
-            // Get menus with permissions for this role
-            var sql = @"SELECT 
-                m.menu_id as MenuId,
-                m.menu_name as MenuName,
-                m.menu_path as MenuPath,
-                m.menu_icon as MenuIcon,
-                m.parent_menu_id as ParentMenuId,
-                m.sort_order as SortOrder,
-                rmp.can_view as CanView,
-                rmp.can_create as CanCreate,
-                rmp.can_edit as CanEdit,
-                rmp.can_delete as CanDelete
+            // Get menus with permissions - prioritize user-specific permissions over role permissions
+            var sql = @"
+                SELECT DISTINCT
+                    m.menu_id as MenuId,
+                    m.menu_name as MenuName,
+                    m.menu_path as MenuPath,
+                    m.menu_icon as MenuIcon,
+                    m.parent_menu_id as ParentMenuId,
+                    m.sort_order as SortOrder,
+                    COALESCE(ump.can_view, rmp.can_view, 'N') as CanView,
+                    COALESCE(ump.can_create, rmp.can_create, 'N') as CanCreate,
+                    COALESCE(ump.can_edit, rmp.can_edit, 'N') as CanEdit,
+                    COALESCE(ump.can_delete, rmp.can_delete, 'N') as CanDelete
                 FROM Menus m
-                INNER JOIN RoleMenuPermissions rmp ON m.menu_id = rmp.menu_id
-                WHERE rmp.role_id = @RoleId 
-                AND m.is_active = 'Y'
-                AND rmp.can_view = 'Y'
+                LEFT JOIN RoleMenuPermissions rmp ON m.menu_id = rmp.menu_id AND rmp.role_id = @RoleId
+                LEFT JOIN UserMenuPermissions ump ON m.menu_id = ump.menu_id AND ump.system_user_id = @UserId
+                WHERE m.is_active = 'Y'
+                AND (
+                    (ump.can_view = 'Y') OR 
+                    (ump.can_view IS NULL AND rmp.can_view = 'Y')
+                )
                 ORDER BY m.sort_order";
 
-            var menus = await _connection.QueryAsync<MenuWithPermissionsDto>(sql, new { RoleId = roleId });
+            var menus = await _connection.QueryAsync<MenuWithPermissionsDto>(sql, new { UserId = userId, RoleId = roleId });
             var menuHierarchy = BuildPermissionMenuHierarchy(menus.ToList());
 
-            return Ok(new { message = "User menus retrieved successfully", data = new UserMenuResponseDto { Menus = menuHierarchy } });
+            return Ok(new { 
+                message = "User menus retrieved successfully", 
+                userId = userId,
+                data = new UserMenuResponseDto { Menus = menuHierarchy } 
+            });
         }
         catch (Exception ex)
         {
@@ -313,5 +326,139 @@ public class MenusController : ControllerBase
         }
 
         return parentMenus.OrderBy(m => m.SortOrder).ToList();
+    }
+
+    // POST: api/Menus/user-permissions/{userId}
+    // Assign specific menu permissions to a user (overrides role permissions)
+    [HttpPost("user-permissions/{userId}")]
+    public async Task<IActionResult> AssignUserMenuPermissions(int userId, [FromBody] List<UserMenuPermissionDto> permissions)
+    {
+        try
+        {
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
+
+            // Verify user exists
+            var userExists = await _connection.QueryFirstOrDefaultAsync<int?>(
+                "SELECT system_user_id FROM SystemUsers WHERE system_user_id = @UserId",
+                new { UserId = userId });
+
+            if (userExists == null)
+            {
+                return NotFound(new { message = $"User with ID {userId} not found" });
+            }
+
+            // Delete existing user-specific permissions
+            await _connection.ExecuteAsync(
+                "DELETE FROM UserMenuPermissions WHERE system_user_id = @UserId",
+                new { UserId = userId });
+
+            // Insert new permissions
+            if (permissions.Any())
+            {
+                var sql = @"INSERT INTO UserMenuPermissions 
+                    (system_user_id, menu_id, can_view, can_create, can_edit, can_delete, created_at, updated_at)
+                    VALUES (@UserId, @MenuId, @CanView, @CanCreate, @CanEdit, @CanDelete, NOW(), NOW())";
+
+                foreach (var permission in permissions)
+                {
+                    await _connection.ExecuteAsync(sql, new
+                    {
+                        UserId = userId,
+                        permission.MenuId,
+                        permission.CanView,
+                        permission.CanCreate,
+                        permission.CanEdit,
+                        permission.CanDelete
+                    });
+                }
+            }
+
+            return Ok(new { 
+                message = "User menu permissions assigned successfully", 
+                userId = userId,
+                permissionsCount = permissions.Count 
+            });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { message = ex.Message });
+        }
+    }
+
+    // GET: api/Menus/user-permissions/{userId}
+    // Get user-specific menu permissions
+    [HttpGet("user-permissions/{userId}")]
+    public async Task<IActionResult> GetUserMenuPermissions(int userId)
+    {
+        try
+        {
+            // Verify user exists
+            var userExists = await _connection.QueryFirstOrDefaultAsync<int?>(
+                "SELECT system_user_id FROM SystemUsers WHERE system_user_id = @UserId",
+                new { UserId = userId });
+
+            if (userExists == null)
+            {
+                return NotFound(new { message = $"User with ID {userId} not found" });
+            }
+
+            var sql = @"SELECT 
+                ump.user_permission_id as UserPermissionId,
+                ump.system_user_id as UserId,
+                ump.menu_id as MenuId,
+                m.menu_name as MenuName,
+                m.menu_path as MenuPath,
+                ump.can_view as CanView,
+                ump.can_create as CanCreate,
+                ump.can_edit as CanEdit,
+                ump.can_delete as CanDelete
+                FROM UserMenuPermissions ump
+                INNER JOIN Menus m ON ump.menu_id = m.menu_id
+                WHERE ump.system_user_id = @UserId
+                ORDER BY m.sort_order";
+
+            var permissions = await _connection.QueryAsync<UserMenuPermissionResponseDto>(sql, new { UserId = userId });
+
+            return Ok(new { 
+                message = "User menu permissions retrieved successfully",
+                userId = userId,
+                data = permissions.ToList() 
+            });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { message = ex.Message });
+        }
+    }
+
+    // DELETE: api/Menus/user-permissions/{userId}
+    // Remove all user-specific menu permissions (user will fall back to role permissions)
+    [HttpDelete("user-permissions/{userId}")]
+    public async Task<IActionResult> DeleteUserMenuPermissions(int userId)
+    {
+        try
+        {
+            var rowsAffected = await _connection.ExecuteAsync(
+                "DELETE FROM UserMenuPermissions WHERE system_user_id = @UserId",
+                new { UserId = userId });
+
+            if (rowsAffected == 0)
+            {
+                return NotFound(new { message = $"No user-specific permissions found for user ID {userId}" });
+            }
+
+            return Ok(new { 
+                message = "User menu permissions removed successfully. User will now use role-based permissions.",
+                userId = userId,
+                removedCount = rowsAffected 
+            });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { message = ex.Message });
+        }
     }
 }
