@@ -1,0 +1,15 @@
+bin/
+obj/
+*.user
+*.vspscc
+*.vssscc
+.vs/
+.vscode/
+Dockerfile
+*.mdf
+*.ldf
+*.db
+*.suo
+*.userosscache
+*.sln.docstates
+appsettings.*.json

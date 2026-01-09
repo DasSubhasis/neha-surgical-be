@@ -1,0 +1,56 @@
+version: '3.8'
+
+services:
+  neha-surgical-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: neha-surgical-api
+    ports:
+      - "5280:8080"
+      - "5281:8081"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_URLS=http://+:8080
+      - ConnectionStrings__DefaultConnection=Host=postgres-db;Port=5432;Database=neha_surgical;Username=postgres;Password=z9Pjv&W75eKmxifp
+      - Jwt__Key=NehaSurgical2025SecretKeyForJWTAuthentication123456
+      - Jwt__Issuer=NehaSurgicalAPI
+      - Jwt__Audience=NehaSurgicalClients
+      - Jwt__ExpiryHours=24
+    depends_on:
+      - postgres-db
+    networks:
+      - neha-surgical-network
+    restart: unless-stopped
+    volumes:
+      - ./keys:/app/keys:ro
+
+  postgres-db:
+    image: postgres:16-alpine
+    container_name: neha-surgical-postgres
+    environment:
+      - POSTGRES_DB=neha_surgical
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=z9Pjv&W75eKmxifp
+      - PGDATA=/var/lib/postgresql/data/pgdata
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./Database:/docker-entrypoint-initdb.d:ro
+    networks:
+      - neha-surgical-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+networks:
+  neha-surgical-network:
+    driver: bridge
+
+volumes:
+  postgres-data:
+    driver: local
