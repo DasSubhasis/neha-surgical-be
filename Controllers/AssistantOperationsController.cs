@@ -168,50 +168,76 @@ public class AssistantOperationsController : ControllerBase
 
             var operationRecordId = await _connection.ExecuteScalarAsync<int>(sql, dto);
 
-            // If checkout time is provided, update order status to Completed (Pre-Billing)
+            // If checkout time is provided, update order status to Completed (Pre-Billing) only if not already set
             if (dto.CheckoutTime.HasValue)
             {
                 try
                 {
-                    var updateOrderSql = @"UPDATE Orders 
-                                           SET status = 'Completed (Pre-Billing)',
-                                               updated_at = NOW()
-                                           WHERE order_id = @OrderId";
+                    // Check current order status
+                    var currentStatus = await _connection.QueryFirstOrDefaultAsync<string>(
+                        "SELECT status FROM Orders WHERE order_id = @OrderId",
+                        new { OrderId = dto.OrderId });
 
-                    await _connection.ExecuteAsync(updateOrderSql, new { OrderId = dto.OrderId });
+                    // Only update if status is not already 'Completed (Pre-Billing)'
+                    if (currentStatus != "Completed (Pre-Billing)")
+                    {
+                        var updateOrderSql = @"UPDATE Orders 
+                                               SET status = 'Completed (Pre-Billing)',
+                                                   updated_at = NOW()
+                                               WHERE order_id = @OrderId";
 
-                    // Create audit entry for order status change
-                    var auditSql = @"INSERT INTO OrderAudits (order_id, action, action_by, action_at)
-                                    VALUES (@OrderId, 'Status changed to Completed (Pre-Billing) (Operation completed)', 'System', NOW())";
+                        await _connection.ExecuteAsync(updateOrderSql, new { OrderId = dto.OrderId });
 
-                    await _connection.ExecuteAsync(auditSql, new { OrderId = dto.OrderId });
+                        // Create audit entry for order status change
+                        var auditSql = @"INSERT INTO OrderAudits (order_id, action, action_by, action_at)
+                                        VALUES (@OrderId, 'Status changed to Completed (Pre-Billing) (Operation completed)', 'System', NOW())";
 
-                    _logger.LogInformation("Order {OrderId} status updated to Completed (Pre-Billing)", dto.OrderId);
+                        await _connection.ExecuteAsync(auditSql, new { OrderId = dto.OrderId });
+
+                        _logger.LogInformation("Order {OrderId} status updated to Completed (Pre-Billing)", dto.OrderId);
+                    }
+                    else
+                    {
+                        _logger.LogInformation("Order {OrderId} status already set to Completed (Pre-Billing), skipping update", dto.OrderId);
+                    }
                 }
                 catch (Exception orderEx)
                 {
                     _logger.LogError(orderEx, "Failed to update order status to Completed (Pre-Billing) for order {OrderId}. Check if status is allowed in constraint.", dto.OrderId);
                 }
             }
-            // If only checkin time is provided, update order status to In-operation
+            // If only checkin time is provided, update order status to In-operation only if not already set
             else if (dto.CheckinTime.HasValue)
             {
                 try
                 {
-                    var updateOrderSql = @"UPDATE Orders 
-                                           SET status = 'In-operation',
-                                               updated_at = NOW()
-                                           WHERE order_id = @OrderId";
+                    // Check current order status
+                    var currentStatus = await _connection.QueryFirstOrDefaultAsync<string>(
+                        "SELECT status FROM Orders WHERE order_id = @OrderId",
+                        new { OrderId = dto.OrderId });
 
-                    await _connection.ExecuteAsync(updateOrderSql, new { OrderId = dto.OrderId });
+                    // Only update if status is not already 'In-operation' or beyond
+                    if (currentStatus != "In-operation" && currentStatus != "Completed (Pre-Billing)")
+                    {
+                        var updateOrderSql = @"UPDATE Orders 
+                                               SET status = 'In-operation',
+                                                   updated_at = NOW()
+                                               WHERE order_id = @OrderId";
 
-                    // Create audit entry for order status change
-                    var auditSql = @"INSERT INTO OrderAudits (order_id, action, action_by, action_at)
-                                    VALUES (@OrderId, 'Status changed to In-operation (Operation started)', 'System', NOW())";
+                        await _connection.ExecuteAsync(updateOrderSql, new { OrderId = dto.OrderId });
 
-                    await _connection.ExecuteAsync(auditSql, new { OrderId = dto.OrderId });
+                        // Create audit entry for order status change
+                        var auditSql = @"INSERT INTO OrderAudits (order_id, action, action_by, action_at)
+                                        VALUES (@OrderId, 'Status changed to In-operation (Operation started)', 'System', NOW())";
 
-                    _logger.LogInformation("Order {OrderId} status updated to In-operation", dto.OrderId);
+                        await _connection.ExecuteAsync(auditSql, new { OrderId = dto.OrderId });
+
+                        _logger.LogInformation("Order {OrderId} status updated to In-operation", dto.OrderId);
+                    }
+                    else
+                    {
+                        _logger.LogInformation("Order {OrderId} status already set to {Status}, skipping update", dto.OrderId, currentStatus);
+                    }
                 }
                 catch (Exception orderEx)
                 {
@@ -319,23 +345,36 @@ public class AssistantOperationsController : ControllerBase
                 dto.Notes
             });
 
-            // Update order status to In-operation
+            // Update order status to In-operation only if not already set
             try
             {
-                var updateOrderSql = @"UPDATE Orders 
-                                       SET status = 'In-operation',
-                                           updated_at = NOW()
-                                       WHERE order_id = @OrderId";
+                // Check current order status
+                var currentStatus = await _connection.QueryFirstOrDefaultAsync<string>(
+                    "SELECT status FROM Orders WHERE order_id = @OrderId",
+                    new { OrderId = orderId });
 
-                await _connection.ExecuteAsync(updateOrderSql, new { OrderId = orderId });
+                // Only update if status is not already 'In-operation' or beyond
+                if (currentStatus != "In-operation" && currentStatus != "Completed (Pre-Billing)")
+                {
+                    var updateOrderSql = @"UPDATE Orders 
+                                           SET status = 'In-operation',
+                                               updated_at = NOW()
+                                           WHERE order_id = @OrderId";
 
-                // Create audit entry for order status change
-                var auditSql = @"INSERT INTO OrderAudits (order_id, action, action_by, action_at)
-                                VALUES (@OrderId, 'Status changed to In-operation (Assistant checked in)', 'System', NOW())";
+                    await _connection.ExecuteAsync(updateOrderSql, new { OrderId = orderId });
 
-                await _connection.ExecuteAsync(auditSql, new { OrderId = orderId });
+                    // Create audit entry for order status change
+                    var auditSql = @"INSERT INTO OrderAudits (order_id, action, action_by, action_at)
+                                    VALUES (@OrderId, 'Status changed to In-operation (Assistant checked in)', 'System', NOW())";
 
-                _logger.LogInformation("Order {OrderId} status updated to In-operation", orderId);
+                    await _connection.ExecuteAsync(auditSql, new { OrderId = orderId });
+
+                    _logger.LogInformation("Order {OrderId} status updated to In-operation", orderId);
+                }
+                else
+                {
+                    _logger.LogInformation("Order {OrderId} status already set to {Status}, skipping update on check-in", orderId, currentStatus);
+                }
             }
             catch (Exception orderEx)
             {
@@ -393,23 +432,36 @@ public class AssistantOperationsController : ControllerBase
                 dto.Notes
             });
 
-            // Update order status to Completed (Pre-Billing)
+            // Update order status to Completed (Pre-Billing) only if not already set
             try
             {
-                var updateOrderSql = @"UPDATE Orders 
-                                       SET status = 'Completed (Pre-Billing)',
-                                           updated_at = NOW()
-                                       WHERE order_id = @OrderId";
+                // Check current order status
+                var currentStatus = await _connection.QueryFirstOrDefaultAsync<string>(
+                    "SELECT status FROM Orders WHERE order_id = @OrderId",
+                    new { OrderId = orderId });
 
-                await _connection.ExecuteAsync(updateOrderSql, new { OrderId = orderId });
+                // Only update if status is not already 'Completed (Pre-Billing)'
+                if (currentStatus != "Completed (Pre-Billing)")
+                {
+                    var updateOrderSql = @"UPDATE Orders 
+                                           SET status = 'Completed (Pre-Billing)',
+                                               updated_at = NOW()
+                                           WHERE order_id = @OrderId";
 
-                // Create audit entry for order status change
-                var auditSql = @"INSERT INTO OrderAudits (order_id, action, action_by, action_at)
-                                VALUES (@OrderId, 'Status changed to Completed (Pre-Billing) (Assistant checked out)', 'System', NOW())";
+                    await _connection.ExecuteAsync(updateOrderSql, new { OrderId = orderId });
 
-                await _connection.ExecuteAsync(auditSql, new { OrderId = orderId });
+                    // Create audit entry for order status change
+                    var auditSql = @"INSERT INTO OrderAudits (order_id, action, action_by, action_at)
+                                    VALUES (@OrderId, 'Status changed to Completed (Pre-Billing) (Assistant checked out)', 'System', NOW())";
 
-                _logger.LogInformation("Order {OrderId} status updated to Completed (Pre-Billing)", orderId);
+                    await _connection.ExecuteAsync(auditSql, new { OrderId = orderId });
+
+                    _logger.LogInformation("Order {OrderId} status updated to Completed (Pre-Billing)", orderId);
+                }
+                else
+                {
+                    _logger.LogInformation("Order {OrderId} status already set to Completed (Pre-Billing), skipping update on check-out", orderId);
+                }
             }
             catch (Exception orderEx)
             {
