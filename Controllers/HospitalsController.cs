@@ -125,8 +125,8 @@ public class HospitalsController : ControllerBase
             {
                 foreach (var contact in hospitalDto.Contacts)
                 {
-                    var contactSql = @"INSERT INTO HospitalContacts (hospital_id, name, mobile, email, location, remarks, created_at, updated_at)
-                        VALUES (@HospitalId, @Name, @Mobile, @Email, @Location, @Remarks, NOW(), NOW())";
+                    var contactSql = @"INSERT INTO HospitalContacts (hospital_id, name, mobile, email, location, department, remarks, created_at, updated_at)
+                        VALUES (@HospitalId, @Name, @Mobile, @Email, @Location, @Department, @Remarks, NOW(), NOW())";
                     await _connection.ExecuteAsync(contactSql, new
                     {
                         HospitalId = hospital.HospitalId,
@@ -134,6 +134,7 @@ public class HospitalsController : ControllerBase
                         contact.Mobile,
                         contact.Email,
                         contact.Location,
+                        contact.Department,
                         contact.Remarks
                     });
                 }
@@ -208,8 +209,8 @@ public class HospitalsController : ControllerBase
                 // Insert new contacts
                 foreach (var contact in hospitalDto.Contacts)
                 {
-                    var contactSql = @"INSERT INTO HospitalContacts (hospital_id, name, mobile, email, location, remarks, created_at, updated_at)
-                        VALUES (@HospitalId, @Name, @Mobile, @Email, @Location, @Remarks, NOW(), NOW())";
+                    var contactSql = @"INSERT INTO HospitalContacts (hospital_id, name, mobile, email, location, department, remarks, created_at, updated_at)
+                        VALUES (@HospitalId, @Name, @Mobile, @Email, @Location, @Department, @Remarks, NOW(), NOW())";
                     await _connection.ExecuteAsync(contactSql, new
                     {
                         HospitalId = id,
@@ -217,6 +218,7 @@ public class HospitalsController : ControllerBase
                         contact.Mobile,
                         contact.Email,
                         contact.Location,
+                        contact.Department,
                         contact.Remarks
                     });
                 }
@@ -276,6 +278,7 @@ public class HospitalsController : ControllerBase
                 Mobile = c.Mobile,
                 Email = c.Email,
                 Location = c.Location,
+                Department = c.Department,
                 Remarks = c.Remarks
             }).ToList() ?? new List<HospitalContactDto>()
         };

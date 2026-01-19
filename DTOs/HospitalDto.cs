@@ -11,6 +11,7 @@ public class HospitalContactDto
     public string? Mobile { get; set; }
     public string? Email { get; set; }
     public string? Location { get; set; }
+    public string? Department { get; set; }
     public string? Remarks { get; set; }
 }
 

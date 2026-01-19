@@ -22,6 +22,9 @@ public class HospitalContact
     [Column("location")]
     public string? Location { get; set; }
 
+    [Column("department")]
+    public string? Department { get; set; }
+
     [Column("remarks")]
     public string? Remarks { get; set; }
 
