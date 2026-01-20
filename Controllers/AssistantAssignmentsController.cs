@@ -67,7 +67,7 @@ public class AssistantAssignmentsController : ControllerBase
                 }
             }
 
-            sql += " ORDER BY o.operation_date DESC, o.operation_time DESC";
+            sql += " ORDER BY o.operation_date ASC, o.operation_time ASC";
 
             var assignments = await _connection.QueryAsync<dynamic>(sql);
 
