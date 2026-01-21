@@ -496,12 +496,10 @@ public class MaterialDeliveriesController : ControllerBase
             // Update delivery to mark as delivered
             var updateSql = @"UPDATE MaterialDeliveries 
                              SET delivery_status = 'Delivered',
-                                 delivery_date = @DeliveryDate,
-                                 delivered_by = @DeliveredBy,
-                                 delivered_by_user_id = @DeliveredById,
                                  remarks = COALESCE(@Remarks, remarks),
-                                 updated_by = @UpdatedBy,
-                                 updated_at = @UpdatedAt
+                                 actual_delivery_by = @ActualDeliveryBy,
+                                 actual_delivery_by_userid = @ActualDeliveryByUserId,
+                                 actual_delivery_time = @ActualDeliveryTime
                              WHERE delivery_id = @Id";
 
             await _connection.ExecuteAsync(updateSql, new
@@ -511,8 +509,9 @@ public class MaterialDeliveriesController : ControllerBase
                 DeliveredBy = userName,
                 DeliveredById = request.DeliveredById,
                 Remarks = request.Remarks,
-                UpdatedBy = userName,
-                UpdatedAt = currentTimestamp
+                ActualDeliveryBy = userName,
+                ActualDeliveryByUserId = request.DeliveredById,
+                ActualDeliveryTime = currentTimestamp
             });
 
             // Update order's is_delivered status

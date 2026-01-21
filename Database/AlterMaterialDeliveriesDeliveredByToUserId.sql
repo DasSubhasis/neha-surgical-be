@@ -3,6 +3,11 @@
 ALTER TABLE MaterialDeliveries 
 ADD COLUMN delivered_by_user_id INTEGER;
 
+ALTER TABLE MaterialDeliveries 
+ADD COLUMN actual_delivery_by VARCHAR(100),
+ADD COLUMN actual_delivery_by_userid INTEGER,
+ADD COLUMN actual_delivery_time TIMESTAMP;
+
 -- Step 2: Add foreign key constraint
 ALTER TABLE MaterialDeliveries 
 ADD CONSTRAINT fk_material_deliveries_delivered_by 
