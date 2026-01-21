@@ -73,7 +73,7 @@ public class OrdersController : ControllerBase
                 sql += " AND o.is_delivered = @IsDelivered";
             }
 
-            sql += " ORDER BY o.order_id DESC";
+            sql += " ORDER BY o.operation_date ASC, o.operation_time ASC";
 
             var orders = (await _connection.QueryAsync<dynamic>(sql, new { Status = status, IsDelivered = isDelivered, AssignedId = assignedId })).ToList();
             
@@ -123,7 +123,7 @@ public class OrdersController : ControllerBase
                 INNER JOIN Doctors d ON o.doctor_id = d.doctor_id
                 INNER JOIN Hospitals h ON o.hospital_id = h.hospital_id
                 WHERE o.is_active = 'Y' AND o.is_delivered != 'Delivered'
-                ORDER BY o.order_id DESC";
+                ORDER BY o.operation_date ASC, o.operation_time ASC";
 
             var orders = (await _connection.QueryAsync<dynamic>(sql)).ToList();
             
