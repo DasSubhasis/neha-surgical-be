@@ -37,6 +37,16 @@ public class OrderDto
     public string Status { get; set; } = "Pending";
     public string IsDelivered { get; set; } = "Pending";
     public List<OrderAuditDto> Audits { get; set; } = new();
+    public OrderMaterialDeliveryDto? MaterialDelivery { get; set; }
+}
+
+public class OrderMaterialDeliveryDto
+{
+    public string? DeliveryStatus { get; set; }
+    public string? ActualDeliveryBy { get; set; }
+    public int? ActualDeliveryByUserId { get; set; }
+    public string? ActualDeliveryTime { get; set; }
+    public string? Remarks { get; set; }
 }
 
 public class CreateOrderDto

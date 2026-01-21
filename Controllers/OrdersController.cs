@@ -697,6 +697,34 @@ public class OrdersController : ControllerBase
             })
             .ToList();
 
+        // Get material delivery information
+        var deliverySql = @"
+            SELECT 
+                md.delivery_status as DeliveryStatus,
+                md.actual_delivery_by as ActualDeliveryBy,
+                md.actual_delivery_by_userid as ActualDeliveryByUserId,
+                md.actual_delivery_time as ActualDeliveryTime,
+                md.remarks as Remarks
+            FROM MaterialDeliveries md
+            WHERE md.order_id = @OrderId AND md.is_active = 'Y'
+            ORDER BY md.delivery_id DESC
+            LIMIT 1";
+        
+        var delivery = await _connection.QueryFirstOrDefaultAsync<dynamic>(deliverySql, new { OrderId = orderId });
+        
+        OrderMaterialDeliveryDto? materialDelivery = null;
+        if (delivery != null)
+        {
+            materialDelivery = new OrderMaterialDeliveryDto
+            {
+                DeliveryStatus = delivery.deliverystatus != null ? (string)delivery.deliverystatus : null,
+                ActualDeliveryBy = delivery.actualdeliveryby != null ? (string)delivery.actualdeliveryby : null,
+                ActualDeliveryByUserId = delivery.actualdeliverybyuserid != null ? (int?)delivery.actualdeliverybyuserid : null,
+                ActualDeliveryTime = delivery.actualdeliverytime != null ? ((DateTime)delivery.actualdeliverytime).ToString("yyyy-MM-dd HH:mm:ss") : null,
+                Remarks = delivery.remarks != null ? (string)delivery.remarks : null
+            };
+        }
+
         return new OrderDto
         {
             OrderId = orderId,
@@ -715,7 +743,8 @@ public class OrdersController : ControllerBase
             CreatedBy = (string)order.createdby,
             Status = (string)order.status,
             IsDelivered = (string)order.isdelivered,
-            Audits = audits
+            Audits = audits,
+            MaterialDelivery = materialDelivery
         };
     }
 
