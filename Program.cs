@@ -132,15 +132,12 @@ app.UseStaticFiles();
 app.UseSession();
 
 // Configure the HTTP request pipeline.
-if (app.Environment.IsDevelopment())
+app.UseSwagger();
+app.UseSwaggerUI(c =>
 {
-    app.UseSwagger();
-    app.UseSwaggerUI(c =>
-    {
-        c.SwaggerEndpoint("/swagger/v1/swagger.json", "Neha Surgical API v1");
-        c.DocExpansion(Swashbuckle.AspNetCore.SwaggerUI.DocExpansion.None);
-    });
-}
+    c.SwaggerEndpoint("/swagger/v1/swagger.json", "Neha Surgical API v1");
+    c.DocExpansion(Swashbuckle.AspNetCore.SwaggerUI.DocExpansion.None);
+});
 
 app.UseHttpsRedirection();
 

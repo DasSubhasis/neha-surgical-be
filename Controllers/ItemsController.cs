@@ -217,6 +217,87 @@ public class ItemsController : ControllerBase
         }
     }
 
+    // GET: api/Items/filter?itemGroupId=1&specificationId=2&sizeId=3
+    [HttpGet("filter")]
+    public async Task<IActionResult> GetItemsByFilters(
+        [FromQuery] int? itemGroupId = null,
+        [FromQuery] int? specificationId = null,
+        [FromQuery] int? sizeId = null)
+    {
+        try
+        {
+            var sql = @"SELECT 
+                i.item_id as ItemId,
+                i.name as Name,
+                i.shortname as Shortname,
+                i.brand_id as BrandId,
+                b.name as BrandName,
+                i.category_id as CategoryId,
+                c.name as CategoryName,
+                i.item_group_id as ItemGroupId,
+                ig.name as ItemGroupName,
+                i.specification_id as SpecificationId,
+                s.name as SpecificationName,
+                i.size_id as SizeId,
+                sz.name as SizeName,
+                i.material as Material,
+                i.model as Model,
+                i.description as Description,
+                i.price as Price,
+                i.status as Status,
+                i.is_active as IsActive,
+                i.created_at as CreatedAt,
+                i.updated_at as UpdatedAt
+                FROM Items i
+                INNER JOIN Brands b ON i.brand_id = b.brand_id
+                INNER JOIN Categories c ON i.category_id = c.category_id
+                LEFT JOIN ItemGroups ig ON i.item_group_id = ig.item_group_id
+                LEFT JOIN Specifications s ON i.specification_id = s.specification_id
+                LEFT JOIN Sizes sz ON i.size_id = sz.size_id
+                WHERE i.is_active = 'Y'";
+
+            var parameters = new DynamicParameters();
+
+            if (itemGroupId.HasValue)
+            {
+                sql += " AND i.item_group_id = @ItemGroupId";
+                parameters.Add("ItemGroupId", itemGroupId.Value);
+            }
+
+            if (specificationId.HasValue)
+            {
+                sql += " AND i.specification_id = @SpecificationId";
+                parameters.Add("SpecificationId", specificationId.Value);
+            }
+
+            if (sizeId.HasValue)
+            {
+                sql += " AND i.size_id = @SizeId";
+                parameters.Add("SizeId", sizeId.Value);
+            }
+
+            sql += " ORDER BY i.item_id DESC";
+
+            var items = await _connection.QueryAsync<dynamic>(sql, parameters);
+            var itemDtos = items.Select(i => MapToDto(i)).ToList();
+
+            return Ok(new { 
+                message = "Items retrieved successfully", 
+                filters = new {
+                    itemGroupId,
+                    specificationId,
+                    sizeId
+                },
+                count = itemDtos.Count,
+                data = itemDtos 
+            });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { message = ex.Message });
+        }
+    }
+
     // POST: api/Items
     [HttpPost]
     public async Task<IActionResult> CreateItem([FromBody] CreateItemDto itemDto)
@@ -370,6 +451,7 @@ public class ItemsController : ControllerBase
             ItemId = (int)item.itemid,
             Name = (string)item.name,
             Shortname = (string)item.shortname,
+            DisplayName = $"{item.shortname} - {item.name} - {item.brandname}",
             BrandId = (int)item.brandid,
             BrandName = (string)item.brandname,
             CategoryId = (int)item.categoryid,

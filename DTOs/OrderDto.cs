@@ -49,6 +49,34 @@ public class OrderMaterialDeliveryDto
     public string? Remarks { get; set; }
 }
 
+public class OrderItemGroupWithItemsDto
+{
+    public string GroupName { get; set; } = string.Empty;
+    public List<OrderItemDto> Items { get; set; } = new();
+}
+
+public class OrderGroupedDto
+{
+    public int OrderId { get; set; }
+    public string OrderNo { get; set; } = string.Empty;
+    public string OrderDate { get; set; } = string.Empty;
+    public int DoctorId { get; set; }
+    public string DoctorName { get; set; } = string.Empty;
+    public int HospitalId { get; set; }
+    public string HospitalName { get; set; } = string.Empty;
+    public string OperationDate { get; set; } = string.Empty;
+    public string OperationTime { get; set; } = string.Empty;
+    public string MaterialSendDate { get; set; } = string.Empty;
+    public List<OrderItemGroupWithItemsDto> ItemGroups { get; set; } = new();
+    public List<OrderItemDto> UngroupedItems { get; set; } = new();
+    public string? Remarks { get; set; }
+    public string CreatedBy { get; set; } = string.Empty;
+    public string Status { get; set; } = "Pending";
+    public string IsDelivered { get; set; } = "Pending";
+    public List<OrderAuditDto> Audits { get; set; } = new();
+    public OrderMaterialDeliveryDto? MaterialDelivery { get; set; }
+}
+
 public class CreateOrderDto
 {
     [Required(ErrorMessage = "Order date is required")]

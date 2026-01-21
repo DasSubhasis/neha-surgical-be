@@ -190,6 +190,54 @@ public class OrdersController : ControllerBase
         }
     }
 
+    // GET: api/Orders/{id}/grouped
+    [HttpGet("{id}/grouped")]
+    public async Task<IActionResult> GetOrderByIdGrouped(int id)
+    {
+        try
+        {
+            if (_connection.State != System.Data.ConnectionState.Open)
+                await _connection.OpenAsync();
+
+            var sql = @"
+                SELECT 
+                    o.order_id as OrderId,
+                    o.order_no as OrderNo,
+                    o.order_date as OrderDate,
+                    o.doctor_id as DoctorId,
+                    d.doctor_name as DoctorName,
+                    o.hospital_id as HospitalId,
+                    h.name as HospitalName,
+                    o.operation_date as OperationDate,
+                    o.operation_time as OperationTime,
+                    o.material_send_date as MaterialSendDate,
+                    o.remarks as Remarks,
+                    o.created_by as CreatedBy,
+                    o.status as Status,
+                    o.is_delivered as IsDelivered,
+                    o.created_at as CreatedAt,
+                    o.updated_at as UpdatedAt
+                FROM Orders o
+                INNER JOIN Doctors d ON o.doctor_id = d.doctor_id
+                INNER JOIN Hospitals h ON o.hospital_id = h.hospital_id
+                WHERE o.order_id = @OrderId AND o.is_active = 'Y'";
+
+            var order = await _connection.QueryFirstOrDefaultAsync<dynamic>(sql, new { OrderId = id });
+            
+            if (order == null)
+            {
+                return NotFound(new { message = $"Order with ID {id} not found" });
+            }
+
+            var orderDto = await MapToOrderGroupedDto(order);
+            return Ok(new { message = "Order retrieved successfully", data = orderDto });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { message = ex.Message });
+        }
+    }
+
     // POST: api/Orders
     [HttpPost]
     public async Task<IActionResult> CreateOrder([FromBody] CreateOrderDto orderDto)
@@ -777,5 +825,141 @@ public class OrdersController : ControllerBase
 
         var order = await _connection.QueryFirstAsync<dynamic>(sql, new { OrderId = id });
         return await MapToOrderDto(order);
+    }
+
+    // Helper method to map order data to grouped DTO
+    private async Task<OrderGroupedDto> MapToOrderGroupedDto(dynamic order)
+    {
+        if (_connection.State != System.Data.ConnectionState.Open)
+            await _connection.OpenAsync();
+
+        var orderId = (int)order.orderid;
+        
+        // Get item groups with their items
+        var itemGroupsSql = @"
+            SELECT 
+                oig.item_group_name as GroupName,
+                oi.order_item_id as Id,
+                oi.item_name as Name,
+                oi.is_manual as IsManual,
+                oi.is_group as IsGroup,
+                oi.quantity as Quantity,
+                oi.item_group_id as ItemGroupId
+            FROM OrderItemGroups oig
+            LEFT JOIN OrderItems oi ON oig.item_group_id = oi.item_group_id AND oi.order_id = oig.order_id
+            WHERE oig.order_id = @OrderId
+            ORDER BY oig.order_item_group_id, oi.order_item_id";
+        
+        var groupedData = await _connection.QueryAsync<dynamic>(itemGroupsSql, new { OrderId = orderId });
+        
+        var itemGroups = groupedData
+            .GroupBy(g => (string)g.groupname)
+            .Select(g => new OrderItemGroupWithItemsDto
+            {
+                GroupName = g.Key,
+                Items = g.Where(i => i.id != null)
+                    .Select(i => new OrderItemDto
+                    {
+                        Id = ((int)i.id).ToString(),
+                        Name = (string)i.name,
+                        Manual = ((string)i.ismanual) == "Y" ? true : null,
+                        IsGroup = ((string)i.isgroup) == "Y" ? true : null,
+                        Quantity = (int)i.quantity
+                    })
+                    .ToList()
+            })
+            .ToList();
+
+        // Get ungrouped items (items without item_group_id)
+        var ungroupedItemsSql = @"
+            SELECT 
+                COALESCE(item_id::text, order_item_id::text) as Id,
+                item_name as Name,
+                is_manual as IsManual,
+                is_group as IsGroup,
+                quantity as Quantity
+            FROM OrderItems
+            WHERE order_id = @OrderId AND item_group_id IS NULL
+            ORDER BY order_item_id";
+        
+        var ungroupedItems = (await _connection.QueryAsync<dynamic>(ungroupedItemsSql, new { OrderId = orderId }))
+            .Select(i => new OrderItemDto
+            {
+                Id = (string)i.id,
+                Name = (string)i.name,
+                Manual = ((string)i.ismanual) == "Y" ? true : null,
+                IsGroup = ((string)i.isgroup) == "Y" ? true : null,
+                Quantity = (int)i.quantity
+            })
+            .ToList();
+
+        // Get audits
+        var auditsSql = @"
+            SELECT 
+                performed_at as PerformedAt,
+                performed_by as PerformedBy,
+                action as Action
+            FROM OrderAudits
+            WHERE order_id = @OrderId
+            ORDER BY performed_at";
+        
+        var audits = (await _connection.QueryAsync<dynamic>(auditsSql, new { OrderId = orderId }))
+            .Select(a => new OrderAuditDto
+            {
+                When = ((DateTime)a.performedat).ToString("yyyy-MM-dd HH:mm:ss"),
+                By = (string)a.performedby,
+                Action = (string)a.action
+            })
+            .ToList();
+
+        // Get material delivery information
+        var deliverySql = @"
+            SELECT 
+                md.delivery_status as DeliveryStatus,
+                md.actual_delivery_by as ActualDeliveryBy,
+                md.actual_delivery_by_userid as ActualDeliveryByUserId,
+                md.actual_delivery_time as ActualDeliveryTime,
+                md.remarks as Remarks
+            FROM MaterialDeliveries md
+            WHERE md.order_id = @OrderId AND md.is_active = 'Y'
+            ORDER BY md.delivery_id DESC
+            LIMIT 1";
+        
+        var delivery = await _connection.QueryFirstOrDefaultAsync<dynamic>(deliverySql, new { OrderId = orderId });
+        
+        OrderMaterialDeliveryDto? materialDelivery = null;
+        if (delivery != null)
+        {
+            materialDelivery = new OrderMaterialDeliveryDto
+            {
+                DeliveryStatus = delivery.deliverystatus != null ? (string)delivery.deliverystatus : null,
+                ActualDeliveryBy = delivery.actualdeliveryby != null ? (string)delivery.actualdeliveryby : null,
+                ActualDeliveryByUserId = delivery.actualdeliverybyuserid != null ? (int?)delivery.actualdeliverybyuserid : null,
+                ActualDeliveryTime = delivery.actualdeliverytime != null ? ((DateTime)delivery.actualdeliverytime).ToString("yyyy-MM-dd HH:mm:ss") : null,
+                Remarks = delivery.remarks != null ? (string)delivery.remarks : null
+            };
+        }
+
+        return new OrderGroupedDto
+        {
+            OrderId = orderId,
+            OrderNo = (string)order.orderno,
+            OrderDate = order.orderdate is DateTime dt1 ? DateOnly.FromDateTime(dt1).ToString("yyyy-MM-dd") : ((DateOnly)order.orderdate).ToString("yyyy-MM-dd"),
+            DoctorId = (int)order.doctorid,
+            DoctorName = (string)order.doctorname,
+            HospitalId = (int)order.hospitalid,
+            HospitalName = (string)order.hospitalname,
+            OperationDate = order.operationdate is DateTime dt2 ? DateOnly.FromDateTime(dt2).ToString("yyyy-MM-dd") : ((DateOnly)order.operationdate).ToString("yyyy-MM-dd"),
+            OperationTime = order.operationtime is TimeSpan ts ? TimeOnly.FromTimeSpan(ts).ToString("HH:mm") : ((TimeOnly)order.operationtime).ToString("HH:mm"),
+            MaterialSendDate = order.materialsenddate is DateTime dt3 ? DateOnly.FromDateTime(dt3).ToString("yyyy-MM-dd") : ((DateOnly)order.materialsenddate).ToString("yyyy-MM-dd"),
+            ItemGroups = itemGroups,
+            UngroupedItems = ungroupedItems,
+            Remarks = order.remarks != null ? (string)order.remarks : null,
+            CreatedBy = (string)order.createdby,
+            Status = (string)order.status,
+            IsDelivered = (string)order.isdelivered,
+            Audits = audits,
+            MaterialDelivery = materialDelivery
+        };
     }
 }
