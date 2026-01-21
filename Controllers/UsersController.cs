@@ -110,6 +110,49 @@ public class UsersController : ControllerBase
         }
     }
 
+    // GET: api/Users/non-admin
+    [HttpGet("non-admin")]
+    public async Task<IActionResult> GetNonAdminUsers([FromQuery] string? isActive = null)
+    {
+        try
+        {
+            var sql = @"SELECT 
+                su.system_user_id as UserId,
+                su.email as Email,
+                su.full_name as FullName,
+                su.phone_no as Phone,
+                su.employee_id as EmployeeId,
+                su.identifier as Identifier,
+                su.role_id as RoleId,
+                r.role_name as RoleName,
+                su.is_active as IsActive,
+                su.created_at as CreatedAt
+                FROM SystemUsers su
+                LEFT JOIN Roles r ON su.role_id = r.role_id
+                WHERE r.role_name NOT IN ('Admin', 'Super Admin', 'System Admin')";
+
+            if (!string.IsNullOrEmpty(isActive))
+            {
+                sql += " AND su.is_active = @IsActive";
+            }
+
+            sql += " ORDER BY su.system_user_id DESC";
+
+            var users = await _connection.QueryAsync<User>(sql, new { IsActive = isActive });
+            var userDtos = users.Select(u => MapToDto(u)).ToList();
+
+            return Ok(new { 
+                message = "Non-admin users retrieved successfully", 
+                count = userDtos.Count,
+                data = userDtos 
+            });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { message = ex.Message });
+        }
+    }
+
     // GET: api/Users/5
     [HttpGet("{id}")]
     public async Task<IActionResult> GetUserById(int id)
