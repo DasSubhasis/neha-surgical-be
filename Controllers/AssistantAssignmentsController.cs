@@ -108,7 +108,7 @@ public class AssistantAssignmentsController : ControllerBase
             if (_connection.State != System.Data.ConnectionState.Open)
                 await _connection.OpenAsync();
 
-            // Get users with 'Assistant' role
+            // Get users excluding Admin, Super Admin, and System Admin roles
             var sql = @"
                 SELECT 
                     su.system_user_id as Id,
@@ -117,7 +117,7 @@ public class AssistantAssignmentsController : ControllerBase
                     su.email as Email
                 FROM SystemUsers su
                 INNER JOIN Roles r ON su.role_id = r.role_id
-                WHERE r.role_name = 'Assistant' 
+                WHERE r.role_name NOT IN ('Admin', 'Super Admin', 'System Admin')
                 AND su.is_active = 'Y'
                 ORDER BY su.full_name";
 
