@@ -204,18 +204,18 @@ public class SubAssistantAssignmentsController : ControllerBase
 
             if (subAssistant == null)
             {
-                return NotFound(new { message = $"Sub-assistant with ID {dto.SubAssistantId} not found" });
+                return NotFound(new { message = $"Assistant with ID {dto.SubAssistantId} not found" });
             }
 
-            if (subAssistant.role_name != "Assistant")
-            {
-                return BadRequest(new { message = "Selected user is not an assistant" });
-            }
+            // if (subAssistant.role_name != "Assistant")
+            // {
+            //     return BadRequest(new { message = "Selected user is not an assistant" });
+            // }
 
             // Check if sub-assistant is the same as main assistant
             if (assignment.assistant_id == dto.SubAssistantId)
             {
-                return BadRequest(new { message = "Sub-assistant cannot be the same as main assistant" });
+                return BadRequest(new { message = "Assistant cannot be the same as main assistant" });
             }
 
             // Check if sub-assistant already assigned to this assignment
@@ -226,7 +226,7 @@ public class SubAssistantAssignmentsController : ControllerBase
 
             if (existing.HasValue)
             {
-                return Conflict(new { message = "This sub-assistant is already assigned to this order" });
+                return Conflict(new { message = "This assistant is already assigned to this order" });
             }
 
             // Validate assigned_by user if provided
@@ -261,11 +261,11 @@ public class SubAssistantAssignmentsController : ControllerBase
                 (string)subAssistant.full_name, (string)subAssistant.phone_no, (string)assignment.main_assistant_name, (string)assignment.order_no);
 
             return CreatedAtAction(nameof(GetSubAssignmentById), new { id = subAssignmentId }, 
-                new { message = "Sub-assistant assigned successfully", subAssignmentId });
+                new { message = "Assistant assigned successfully", subAssignmentId });
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error assigning sub-assistant");
+            _logger.LogError(ex, "Error assigning assistant");
             return StatusCode(500, new { message = ex.Message });
         }
     }
