@@ -47,17 +47,25 @@ public class ConsumptionsController : ControllerBase
 
             var consumptions = await _connection.QueryAsync<dynamic>(sql, new { OrderId = orderId });
 
-            var consumptionDtos = consumptions.Select(c => new ConsumptionDto
+            var consumptionDtos = new List<ConsumptionDto>();
+            
+            foreach (var c in consumptions)
             {
-                ConsumptionId = (int)c.consumptionid,
-                OrderId = (int)c.orderid,
-                OrderNo = (string)c.orderno,
-                ItemGroupId = c.itemgroupid != null ? (int?)c.itemgroupid : null,
-                ItemGroupName = c.itemgroupname != null ? (string)c.itemgroupname : null,
-                ConsumedItems = JsonSerializer.Deserialize<List<ConsumedItemDto>>((string)c.consumeditems) ?? new(),
-                CreatedBy = (string)c.createdby,
-                CreatedAt = ((DateTime)c.createdat).ToString("yyyy-MM-dd HH:mm:ss")
-            }).ToList();
+                var images = await GetConsumptionImages((int)c.consumptionid);
+                
+                consumptionDtos.Add(new ConsumptionDto
+                {
+                    ConsumptionId = (int)c.consumptionid,
+                    OrderId = (int)c.orderid,
+                    OrderNo = (string)c.orderno,
+                    ItemGroupId = c.itemgroupid != null ? (int?)c.itemgroupid : null,
+                    ItemGroupName = c.itemgroupname != null ? (string)c.itemgroupname : null,
+                    ConsumedItems = JsonSerializer.Deserialize<List<ConsumedItemDto>>((string)c.consumeditems) ?? new(),
+                    Images = images,
+                    CreatedBy = (string)c.createdby,
+                    CreatedAt = ((DateTime)c.createdat).ToString("yyyy-MM-dd HH:mm:ss")
+                });
+            }
 
             // Filter by item type if specified
             if (!string.IsNullOrEmpty(type))
@@ -112,6 +120,8 @@ public class ConsumptionsController : ControllerBase
                 return NotFound(new { message = $"Consumption with ID {id} not found" });
             }
 
+            var images = await GetConsumptionImages(id);
+
             var consumptionDto = new ConsumptionDto
             {
                 ConsumptionId = (int)consumption.consumptionid,
@@ -120,6 +130,7 @@ public class ConsumptionsController : ControllerBase
                 ItemGroupId = consumption.itemgroupid != null ? (int?)consumption.itemgroupid : null,
                 ItemGroupName = consumption.itemgroupname != null ? (string)consumption.itemgroupname : null,
                 ConsumedItems = JsonSerializer.Deserialize<List<ConsumedItemDto>>((string)consumption.consumeditems) ?? new(),
+                Images = images,
                 CreatedBy = (string)consumption.createdby,
                 CreatedAt = ((DateTime)consumption.createdat).ToString("yyyy-MM-dd HH:mm:ss")
             };
@@ -129,6 +140,56 @@ public class ConsumptionsController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error retrieving consumption with ID {ConsumptionId}", id);
+            return StatusCode(500, new { message = ex.Message });
+        }
+    }
+
+    // GET: api/Consumptions/order/5
+    [HttpGet("order/{orderId}")]
+    public async Task<IActionResult> GetConsumptionsByOrderId(int orderId)
+    {
+        try
+        {
+            if (_connection.State != System.Data.ConnectionState.Open)
+                await _connection.OpenAsync();
+
+            var sql = @"SELECT c.consumption_id as ConsumptionId, c.order_id as OrderId,
+                        o.order_no as OrderNo, c.item_group_id as ItemGroupId,
+                        c.item_group_name as ItemGroupName, c.consumed_items as ConsumedItems,
+                        c.created_by as CreatedBy,
+                        c.created_at as CreatedAt
+                        FROM Consumptions c
+                        INNER JOIN Orders o ON c.order_id = o.order_id
+                        WHERE c.order_id = @OrderId AND c.is_active = 'Y'
+                        ORDER BY c.created_at DESC";
+
+            var consumptions = await _connection.QueryAsync<dynamic>(sql, new { OrderId = orderId });
+
+            var consumptionDtos = new List<ConsumptionDto>();
+            
+            foreach (var c in consumptions)
+            {
+                var images = await GetConsumptionImages((int)c.consumptionid);
+                
+                consumptionDtos.Add(new ConsumptionDto
+                {
+                    ConsumptionId = (int)c.consumptionid,
+                    OrderId = (int)c.orderid,
+                    OrderNo = (string)c.orderno,
+                    ItemGroupId = c.itemgroupid != null ? (int?)c.itemgroupid : null,
+                    ItemGroupName = c.itemgroupname != null ? (string)c.itemgroupname : null,
+                    ConsumedItems = JsonSerializer.Deserialize<List<ConsumedItemDto>>((string)c.consumeditems) ?? new(),
+                    Images = images,
+                    CreatedBy = (string)c.createdby,
+                    CreatedAt = ((DateTime)c.createdat).ToString("yyyy-MM-dd HH:mm:ss")
+                });
+            }
+
+            return Ok(new { message = "Consumptions retrieved successfully", count = consumptionDtos.Count, data = consumptionDtos });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving consumptions for order {OrderId}", orderId);
             return StatusCode(500, new { message = ex.Message });
         }
     }
@@ -195,6 +256,12 @@ public class ConsumptionsController : ControllerBase
                 ConsumedItems = consumedItemsJson,
                 dto.CreatedBy
             });
+
+            // Handle image uploads from base64 strings
+            if (dto.Images != null && dto.Images.Count > 0)
+            {
+                await SaveConsumptionImagesFromBase64(consumptionId, dto.Images, dto.CreatedBy);
+            }
 
             // Update order status to Completed
             try
@@ -295,16 +362,24 @@ public class ConsumptionsController : ControllerBase
                 parameters.Add("ConsumedItems", consumedItemsJson);
             }
 
-            if (updateFields.Count == 0)
+            if (updateFields.Count == 0 && (dto.Images == null || dto.Images.Count == 0))
             {
                 return BadRequest(new { message = "No fields to update" });
             }
 
-            updateFields.Add("updated_at = NOW()");
+            // Update consumption fields if any
+            if (updateFields.Count > 0)
+            {
+                updateFields.Add("updated_at = NOW()");
+                var sql = $"UPDATE Consumptions SET {string.Join(", ", updateFields)} WHERE consumption_id = @Id";
+                await _connection.ExecuteAsync(sql, parameters);
+            }
 
-            var sql = $"UPDATE Consumptions SET {string.Join(", ", updateFields)} WHERE consumption_id = @Id";
-
-            await _connection.ExecuteAsync(sql, parameters);
+            // Handle new images if provided
+            if (dto.Images != null && dto.Images.Count > 0)
+            {
+                await SaveConsumptionImagesFromBase64(id, dto.Images, dto.UpdatedBy ?? "system");
+            }
 
             return Ok(new { message = "Consumption updated successfully" });
         }
@@ -334,16 +409,200 @@ public class ConsumptionsController : ControllerBase
                 return NotFound(new { message = $"Consumption with ID {id} not found" });
             }
 
-            // Soft delete
+            // Soft delete consumption
             var sql = "UPDATE Consumptions SET is_active = 'N', updated_at = NOW() WHERE consumption_id = @Id";
             await _connection.ExecuteAsync(sql, new { Id = id });
 
-            return Ok(new { message = "Consumption deleted successfully" });
+            // Soft delete associated images
+            var imagesSql = "UPDATE ConsumptionImages SET is_active = 'N' WHERE consumption_id = @Id";
+            await _connection.ExecuteAsync(imagesSql, new { Id = id });
+
+            return Ok(new { message = "Consumption and associated images deleted successfully" });
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error deleting consumption with ID {ConsumptionId}", id);
             return StatusCode(500, new { message = ex.Message });
+        }
+    }
+
+    // DELETE: api/Consumptions/image/5
+    [HttpDelete("image/{imageId}")]
+    public async Task<IActionResult> DeleteConsumptionImage(int imageId)
+    {
+        try
+        {
+            if (_connection.State != System.Data.ConnectionState.Open)
+                await _connection.OpenAsync();
+
+            // Check if image exists
+            var image = await _connection.QueryFirstOrDefaultAsync<dynamic>(
+                "SELECT image_id, image_path FROM ConsumptionImages WHERE image_id = @ImageId AND is_active = 'Y'",
+                new { ImageId = imageId });
+
+            if (image == null)
+            {
+                return NotFound(new { message = $"Image with ID {imageId} not found" });
+            }
+
+            // Soft delete image in database
+            var sql = "UPDATE ConsumptionImages SET is_active = 'N' WHERE image_id = @ImageId";
+            await _connection.ExecuteAsync(sql, new { ImageId = imageId });
+
+            // Optionally delete physical file
+            try
+            {
+                var imagePath = (string)image.image_path;
+                var physicalPath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", imagePath.TrimStart('/').Replace('/', Path.DirectorySeparatorChar));
+                if (System.IO.File.Exists(physicalPath))
+                {
+                    System.IO.File.Delete(physicalPath);
+                    _logger.LogInformation("Deleted physical file: {FilePath}", physicalPath);
+                }
+            }
+            catch (Exception fileEx)
+            {
+                _logger.LogWarning(fileEx, "Could not delete physical file for image {ImageId}", imageId);
+                // Continue - database record is already marked as deleted
+            }
+
+            return Ok(new { message = "Image deleted successfully" });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error deleting image with ID {ImageId}", imageId);
+            return StatusCode(500, new { message = ex.Message });
+        }
+    }
+
+    // Helper method to get images for a consumption
+    private async Task<List<ConsumptionImageDto>> GetConsumptionImages(int consumptionId)
+    {
+        var sql = @"SELECT image_id as ImageId, image_path as ImagePath, 
+                    file_name as FileName, file_size as FileSize, 
+                    content_type as ContentType, uploaded_by as UploadedBy,
+                    uploaded_at as UploadedAt
+                    FROM ConsumptionImages 
+                    WHERE consumption_id = @ConsumptionId AND is_active = 'Y'
+                    ORDER BY uploaded_at DESC";
+
+        var images = await _connection.QueryAsync<dynamic>(sql, new { ConsumptionId = consumptionId });
+
+        return images.Select(img => new ConsumptionImageDto
+        {
+            ImageId = (int)img.imageid,
+            ImagePath = (string)img.imagepath,
+            FileName = (string)img.filename,
+            FileSize = img.filesize != null ? (long?)img.filesize : null,
+            ContentType = img.contenttype != null ? (string)img.contenttype : null,
+            UploadedBy = img.uploadedby != null ? (string)img.uploadedby : null,
+            UploadedAt = ((DateTime)img.uploadedat).ToString("yyyy-MM-dd HH:mm:ss")
+        }).ToList();
+    }
+
+    // Helper method to save consumption images from base64 strings
+    private async Task SaveConsumptionImagesFromBase64(int consumptionId, List<string> base64Images, string uploadedBy)
+    {
+        var uploadsFolder = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "uploads", "consumptions");
+        
+        if (!Directory.Exists(uploadsFolder))
+        {
+            Directory.CreateDirectory(uploadsFolder);
+        }
+
+        foreach (var base64Image in base64Images)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(base64Image))
+                    continue;
+
+                // Parse data URL format: data:image/jpeg;base64,/9j/4AAQ...
+                string base64Data;
+                string contentType = "image/jpeg"; // default
+                string fileExtension = ".jpg";
+
+                if (base64Image.StartsWith("data:image/"))
+                {
+                    var parts = base64Image.Split(',');
+                    if (parts.Length != 2)
+                    {
+                        _logger.LogWarning("Invalid base64 image format");
+                        continue;
+                    }
+
+                    // Extract content type from data URL
+                    var header = parts[0]; // e.g., "data:image/jpeg;base64"
+                    base64Data = parts[1];
+
+                    if (header.Contains("image/jpeg") || header.Contains("image/jpg"))
+                    {
+                        contentType = "image/jpeg";
+                        fileExtension = ".jpg";
+                    }
+                    else if (header.Contains("image/png"))
+                    {
+                        contentType = "image/png";
+                        fileExtension = ".png";
+                    }
+                    else if (header.Contains("image/gif"))
+                    {
+                        contentType = "image/gif";
+                        fileExtension = ".gif";
+                    }
+                    else if (header.Contains("image/webp"))
+                    {
+                        contentType = "image/webp";
+                        fileExtension = ".webp";
+                    }
+                    else
+                    {
+                        _logger.LogWarning("Unsupported image type: {Header}", header);
+                        continue;
+                    }
+                }
+                else
+                {
+                    // Assume it's raw base64 without data URL prefix
+                    base64Data = base64Image;
+                }
+
+                // Decode base64 to byte array
+                byte[] imageBytes = Convert.FromBase64String(base64Data);
+
+                // Generate unique filename
+                var uniqueFileName = $"{consumptionId}_{Guid.NewGuid()}{fileExtension}";
+                var filePath = Path.Combine(uploadsFolder, uniqueFileName);
+                var relativePath = $"/uploads/consumptions/{uniqueFileName}";
+
+                // Save file to disk
+                await System.IO.File.WriteAllBytesAsync(filePath, imageBytes);
+
+                // Save to database
+                var sql = @"INSERT INTO ConsumptionImages 
+                            (consumption_id, image_path, file_name, file_size, content_type, uploaded_by, uploaded_at, is_active)
+                            VALUES (@ConsumptionId, @ImagePath, @FileName, @FileSize, @ContentType, @UploadedBy, NOW(), 'Y')";
+
+                await _connection.ExecuteAsync(sql, new
+                {
+                    ConsumptionId = consumptionId,
+                    ImagePath = relativePath,
+                    FileName = uniqueFileName,
+                    FileSize = imageBytes.Length,
+                    ContentType = contentType,
+                    UploadedBy = uploadedBy
+                });
+
+                _logger.LogInformation("Saved base64 image {FileName} for consumption {ConsumptionId}", uniqueFileName, consumptionId);
+            }
+            catch (FormatException ex)
+            {
+                _logger.LogError(ex, "Invalid base64 format for image in consumption {ConsumptionId}", consumptionId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error saving image for consumption {ConsumptionId}", consumptionId);
+            }
         }
     }
 }
