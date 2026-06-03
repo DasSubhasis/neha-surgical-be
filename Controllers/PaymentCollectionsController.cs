@@ -34,7 +34,7 @@ public class PaymentCollectionsController : ControllerBase
             if (_connection.State != System.Data.ConnectionState.Open)
                 await _connection.OpenAsync();
 
-            var sql = @"SELECT 
+            var sql = @"SELECT
                         pc.collection_id as CollectionId,
                         pc.collection_date as CollectionDate,
                         pc.collected_by as CollectedBy,
@@ -44,6 +44,8 @@ public class PaymentCollectionsController : ControllerBase
                         h.name as HospitalName,
                         pc.amount as Amount,
                         pc.remarks as Remarks,
+                        pc.payment_mode as PaymentMode,
+                        pc.payment_reference as PaymentReference,
                         pc.created_by as CreatedBy,
                         pc.created_at as CreatedAt
                         FROM PaymentCollections pc
@@ -92,6 +94,8 @@ public class PaymentCollectionsController : ControllerBase
                 HospitalName = (string)c.hospitalname,
                 Amount = (decimal)c.amount,
                 Remarks = c.remarks != null ? (string)c.remarks : null,
+                PaymentMode = c.paymentmode != null ? (string)c.paymentmode : null,
+                PaymentReference = c.paymentreference != null ? (string)c.paymentreference : null,
                 CreatedBy = c.createdby != null ? (string)c.createdby : null,
                 CreatedAt = ((DateTime)c.createdat).ToString("yyyy-MM-dd HH:mm:ss")
             }).ToList();
@@ -114,7 +118,7 @@ public class PaymentCollectionsController : ControllerBase
             if (_connection.State != System.Data.ConnectionState.Open)
                 await _connection.OpenAsync();
 
-            var sql = @"SELECT 
+            var sql = @"SELECT
                         pc.collection_id as CollectionId,
                         pc.collection_date as CollectionDate,
                         pc.collected_by as CollectedBy,
@@ -124,6 +128,8 @@ public class PaymentCollectionsController : ControllerBase
                         h.name as HospitalName,
                         pc.amount as Amount,
                         pc.remarks as Remarks,
+                        pc.payment_mode as PaymentMode,
+                        pc.payment_reference as PaymentReference,
                         pc.created_by as CreatedBy,
                         pc.created_at as CreatedAt
                         FROM PaymentCollections pc
@@ -149,6 +155,8 @@ public class PaymentCollectionsController : ControllerBase
                 HospitalName = (string)collection.hospitalname,
                 Amount = (decimal)collection.amount,
                 Remarks = collection.remarks != null ? (string)collection.remarks : null,
+                PaymentMode = collection.paymentmode != null ? (string)collection.paymentmode : null,
+                PaymentReference = collection.paymentreference != null ? (string)collection.paymentreference : null,
                 CreatedBy = collection.createdby != null ? (string)collection.createdby : null,
                 CreatedAt = ((DateTime)collection.createdat).ToString("yyyy-MM-dd HH:mm:ss")
             };
@@ -196,9 +204,9 @@ public class PaymentCollectionsController : ControllerBase
                 return NotFound(new { message = $"Hospital with ID {dto.HospitalId} not found" });
             }
 
-            var sql = @"INSERT INTO PaymentCollections 
-                        (collection_date, collected_by, doctor_id, hospital_id, amount, remarks, created_by, created_at, updated_at, is_active)
-                        VALUES (@CollectionDate, @CollectedBy, @DoctorId, @HospitalId, @Amount, @Remarks, @CreatedBy, NOW(), NOW(), 'Y')
+            var sql = @"INSERT INTO PaymentCollections
+                        (collection_date, collected_by, doctor_id, hospital_id, amount, remarks, payment_mode, payment_reference, created_by, created_at, updated_at, is_active)
+                        VALUES (@CollectionDate, @CollectedBy, @DoctorId, @HospitalId, @Amount, @Remarks, @PaymentMode, @PaymentReference, @CreatedBy, NOW(), NOW(), 'Y')
                         RETURNING collection_id";
 
             var collectionId = await _connection.ExecuteScalarAsync<int>(sql, new
@@ -209,6 +217,8 @@ public class PaymentCollectionsController : ControllerBase
                 dto.HospitalId,
                 dto.Amount,
                 dto.Remarks,
+                dto.PaymentMode,
+                dto.PaymentReference,
                 dto.CreatedBy
             });
 
@@ -315,6 +325,18 @@ public class PaymentCollectionsController : ControllerBase
             {
                 updateFields.Add("remarks = @Remarks");
                 parameters.Add("Remarks", dto.Remarks);
+            }
+
+            if (dto.PaymentMode != null)
+            {
+                updateFields.Add("payment_mode = @PaymentMode");
+                parameters.Add("PaymentMode", dto.PaymentMode);
+            }
+
+            if (dto.PaymentReference != null)
+            {
+                updateFields.Add("payment_reference = @PaymentReference");
+                parameters.Add("PaymentReference", dto.PaymentReference);
             }
 
             if (updateFields.Count == 0)

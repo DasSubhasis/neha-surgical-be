@@ -13,6 +13,8 @@ public class PaymentCollectionDto
     public string HospitalName { get; set; } = string.Empty;
     public decimal Amount { get; set; }
     public string? Remarks { get; set; }
+    public string? PaymentMode { get; set; }
+    public string? PaymentReference { get; set; }
     public string? CreatedBy { get; set; }
     public string CreatedAt { get; set; } = string.Empty;
 }
@@ -39,6 +41,12 @@ public class CreatePaymentCollectionDto
     [StringLength(1000)]
     public string? Remarks { get; set; }
 
+    [StringLength(50)]
+    public string? PaymentMode { get; set; }
+
+    [StringLength(100)]
+    public string? PaymentReference { get; set; }
+
     [StringLength(100)]
     public string? CreatedBy { get; set; }
 }
@@ -59,4 +67,10 @@ public class UpdatePaymentCollectionDto
 
     [StringLength(1000)]
     public string? Remarks { get; set; }
+
+    [StringLength(50)]
+    public string? PaymentMode { get; set; }
+
+    [StringLength(100)]
+    public string? PaymentReference { get; set; }
 }

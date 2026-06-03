@@ -25,6 +25,12 @@ public class PaymentCollection
     [Column("remarks")]
     public string? Remarks { get; set; }
 
+    [Column("payment_mode")]
+    public string? PaymentMode { get; set; }
+
+    [Column("payment_reference")]
+    public string? PaymentReference { get; set; }
+
     [Column("created_by")]
     public string? CreatedBy { get; set; }
 
