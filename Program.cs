@@ -155,4 +155,7 @@ app.UseMiddleware<JwtAuthMiddleware>();
 
 app.MapControllers();
 
+app.MapGet("/api/health", () => Results.Ok(new { status = "healthy", timestamp = DateTime.UtcNow }))
+   .AllowAnonymous();
+
 app.Run();
